@@ -69,25 +69,25 @@ Example entries (validation split):
 | 517069| 000000517069.jpg  | Two women waiting at a bench next to a street                  |
 | 182417| 000000182417.jpg  | A beautiful dessert waiting to be shared by two people         |
 
----
-
 ### TestSet-2 — Phone-Captured Images
 
-- Small, realistic set of **10 mobile-phone photos**
-- Scenes include:
-  - A man holding a cat in a pet store
-  - A person in front of an IEEE conference banner
-  - A close-up portrait with PUMA glasses
-  - Other everyday photos (vehicles, rooms, food, etc.)
-- **4 images** passed strict path/validation checks and are used for metrics.
+TestSet-2 simulates a realistic usage scenario with **non-curated, real-life photos**.  
+The author captured a small set of mobile-phone images and wrote captions manually.
 
-Each phone image has a manually written, detailed caption, e.g.:
+#### Sample Phone Images and Captions
 
-- `"a smiling man holding a white cat inside a pet store with shelves of products behind him"`
-- `"a young man standing in front of an IEEE COMPAS 2025 conference banner wearing a backpack"`
-- `"a close up of a man wearing black framed PUMA glasses smiling outdoors"`
+<p align="center">
+  <img src="akif_phone_image_7.png" alt="IEEE banner photo" width="230"/>
+  <img src="akif_phone_image_2.jpg" alt="Man holding white cat in pet store" width="230"/>
+  <img src="akif_phone_image_8.png" alt="Close up with PUMA glasses" width="230"/>
+</p>
 
-The phone images are encoded with **the same OpenCLIP pipeline**, and their embeddings are inserted into the same FAISS index as COCO, enabling **joint retrieval**.
+- **Image 1:** “a young man standing in front of an IEEE conference banner wearing a backpack”  
+- **Image 2:** “a smiling man holding a white cat inside a pet store with shelves of products behind him”  
+- **Image 3:** “a close up of a man wearing black framed PUMA glasses smiling outdoors”
+
+Due to strict path validation, **4 phone images** were used in the final evaluation.  
+They are encoded with the same OpenCLIP pipeline and inserted into the FAISS index so that COCO and phone images live in the **same embedding space**.
 
 ---
 
@@ -99,140 +99,145 @@ The phone images are encoded with **the same OpenCLIP pipeline**, and their embe
 - **Text encoder:** Transformer-based text model paired with the ViT  
 - Both map inputs into a **shared 512-D embedding space**
 
-#### Embedding generation
+#### Embedding Generation
 
 - **Images**
-  - Resize & center crop to CLIP resolution
-  - Normalize using CLIP mean/std
+  - Resize & center-crop to CLIP resolution
+  - Normalize with CLIP mean/std
   - Encode with image encoder → 512-D vector
 - **Captions**
-  - Tokenize using OpenCLIP tokenizer
+  - Tokenize with OpenCLIP tokenizer
   - Encode with text encoder → 512-D vector
 - **Normalize**: L2 normalization for both image and text embeddings
 
 ### FAISS Indexing
 
-- Index type: exact **cosine-similarity** search (via normalized dot product)
-- For a query caption embedding \(x_t\) and image embedding \(x_i\):
+- Index type: **exact cosine-similarity** search  
+- For a caption embedding \(x_t\) and image embedding \(x_i\):
 
 \[
 s(x_t, x_i) = \frac{x_t \cdot x_i}{\|x_t\|_2 \|x_i\|_2}
 \]
 
-- Retrieval: given a caption, compute its embedding and query FAISS for **top-K nearest images**.
+Retrieval = compute caption embedding → query FAISS → return **top-K nearest images**.
 
 ---
 
 ## 🔍 Evaluation Metrics
 
-For each caption query, we compute ranking metrics:
+For each caption query we compute:
 
-- **Recall@K (R@K)** — fraction of queries where the correct image is in top-K  
-- **Median Rank (MedR)** — median position of the correct image  
-- **Mean Reciprocal Rank (MRR)** — average of \(1 / \text{rank}\)
+- **Recall@K (R@1, R@5, R@10)** – fraction of queries where the correct image is in top-K  
+- **Median Rank (MedR)** – median rank of the correct image  
+- **Mean Reciprocal Rank (MRR)** – average of \(1 / \text{rank}\)
 
 Metrics are reported separately for:
 
-- **TestSet-1** (COCO validation, and COCO training split)
+- **TestSet-1** (COCO validation and COCO training split)
 - **TestSet-2** (phone images)
 
 ---
 
-## 📈 Results
+## 📈 Quantitative Results
 
-### 1. COCO Validation vs Phone Images
+### COCO Validation vs Phone Images
 
-Using the **COCO 2017 validation split** as the search index (5k images) + 4 phone images:
+Using the **COCO 2017 validation split** (5k images) as the search index:
 
 | Set   | R@1  | R@5  | R@10 | MedR | MRR   | N (queries) |
 |-------|------|------|------|------|-------|-------------|
 | COCO  | 0.388| 0.648| 0.747| 2    | 0.509 | 25,014      |
 | Phone | 0.250| 0.500| 0.500| 11   | 0.388 | 4           |
 
-**Observations**
+- On **COCO** (clean, in-distribution), the engine is strong: correct image typically appears in **top-2**.
+- On **phone images**, performance drops noticeably due to **domain shift**.
 
-- On **COCO** (clean, in-distribution), the system is strong:
-  - Correct image usually appears in **top-2 results**
-  - R@10 almost **75%**
-- On **phone images**, performance drops:
-  - R@1 only **25%**
-  - Median rank jumps to **11**
-  - Shows clear **domain shift** between COCO and real phone photos
+### COCO Training Split vs Phone Images (Large-Scale Retrieval)
 
----
-
-### 2. COCO Training Split vs Phone Images (Large-Scale Retrieval)
-
-Using the **COCO 2017 training split** as the search index (~118k images, 590k captions):
+Using the **COCO 2017 training split** (~118k images, ~590k captions):
 
 | Set   | R@1  | R@5  | R@10 | MedR | MRR   | N (queries) |
 |-------|------|------|------|------|-------|-------------|
 | COCO  | 0.130| 0.267| 0.342| 36   | 0.202 | 590,313     |
 | Phone | 0.250| 0.250| 0.250| 281  | 0.273 | 4           |
 
-**Observations**
-
-- With **118k images**, COCO performance naturally drops:
-  - R@1 ≈ **13%**
-  - R@10 ≈ **34%**
-  - MedR climbs to **36**
-- The **larger search space + caption redundancy** make ranking harder:
-  - Many visually similar images compete for top ranks
-  - Captions re-use common patterns (“a man standing…”, “a dog on the grass…”)
-- Phone images remain challenging: ranks fluctuate widely and MedR is very high (281).
+- **Scale hurts**: with 118k images, R@1 drops to ~13% and MedR rises to 36.
+- Caption redundancy and many near-duplicate images make ranking harder.
+- Phone images remain challenging; ranks fluctuate with very high MedR.
 
 ---
 
 ## 🖼️ Qualitative Examples
 
-The report includes several visualizations (montages of top-10 results):
+### 1. COCO Text→Image Retrieval
 
-- **MS-COCO queries**
-  - `boat_tunnel.png` — Query:  
-    *“A boat in the water next to a rail in a tunnel.”*
-  - `giraffe_fence.png` — Query:  
-    *“A giraffe standing in a field next to a fence.”*
+**Boat in tunnel**
 
-- **Phone-caption queries searching over COCO**
-  - `cat_man_akif_photo.png` — Query:  
-    *“a smiling man holding a white cat inside a pet store with shelves of products behind him”*  
-  - `spectacles.png` — Query:  
-    *“a close up of a man wearing black framed PUMA glasses smiling outdoors”*
-  - `young_man.png` — Query:  
-    *“a young man standing in front of an IEEE COMPAS 2025 conference banner wearing a backpack”*
+<p align="center">
+  <img src="boat_tunnel.png" alt="Boat tunnel retrieval grid" width="800"/>
+</p>
 
-These examples show that the search engine captures **broad semantics** (man, cat, glasses, conference-like scenes), but often fails to retrieve the **exact** phone image when it is embedded among thousands of similar COCO images.
+Query:  
+> *“A boat in the water next to a rail in a tunnel.”*
+
+**Giraffe next to fence**
+
+<p align="center">
+  <img src="giraffe_fence.png" alt="Giraffe fence retrieval grid" width="800"/>
+</p>
+
+Query:  
+> *“A giraffe standing in a field next to a fence.”*
+
+Each montage shows the **top-10 retrieved COCO images**, with rank and cosine similarity printed above each tile.
 
 ---
 
-## 🔧 How to Use (High-Level)
+### 2. Phone Captions Searching Over COCO
 
-1. **Download COCO 2017** (or mount the Kaggle dataset)  
-2. **Run the Colab notebook** (or adapt it locally):
-   - Install dependencies: `open_clip`, `faiss`, `torch`, `tqdm`, etc.
-   - Generate and save **image embeddings** for the chosen split
-   - Build a **FAISS index** over image embeddings
-   - Encode your **query captions** and perform retrieval
-3. **Optional:**  
-   - Add your own **phone images** + captions  
-   - Encode and insert them into the index  
-   - Re-run evaluation metrics and visualizations
+These experiments use **phone-written captions** as queries while searching **only across MS-COCO images**.
+
+<p align="center">
+  <img src="cat_man_akif_photo.png" alt="Cat and man retrieval grid" width="800"/>
+</p>
+
+- **Query:** “a smiling man holding a white cat inside a pet store with shelves of products behind him”  
+- The rank-1 image is the author’s own phone image when it is included in the index; over COCO-only, visually similar scenes are retrieved (man + cat + indoor shelves).
+
+<p align="center">
+  <img src="spectacles.png" alt="Glasses retrieval grid" width="800"/>
+</p>
+
+- **Query:** “a close up of a man wearing black framed PUMA glasses smiling outdoors”  
+
+<p align="center">
+  <img src="young_man.png" alt="IEEE banner retrieval grid" width="800"/>
+</p>
+
+- **Query:** “a young man standing in front of an IEEE COMPAS 2025 conference banner wearing a backpack”
+
+These grids illustrate that the dual-encoder engine captures **broad semantics** (man, glasses, cat, banner-like background), but often struggles to retrieve the **exact** phone image when competing with thousands of similar COCO photos.
 
 ---
 
 ## 💭 Discussion & Takeaways
 
-- **Dual-encoder models like OpenCLIP are powerful zero-shot search engines** on well-curated, in-domain data (COCO validation).
-- **Retrieval quality degrades with:**
-  - **Scale** (5k → 118k images)
-  - **Caption redundancy/noise** (training split vs validation split)
-  - **Domain shift** (COCO → personal phone images)
-- Even when the model “understands” rough semantics, it can struggle with:
-  - Fine context (conference banner text, store interior)
-  - Personal identity cues (the *same* person appearing)
-- For **real-world search applications**, these experiments highlight the need for:
-  - **Domain-aligned fine-tuning** (e.g., contrastive training on user data)
-  - Better handling of **near-duplicates** and **caption variability**
+- Dual-encoder models like **OpenCLIP** excel on **curated, in-domain data** (COCO validation).  
+- Retrieval quality deteriorates with:
+  - **Scale** (5k → 118k+ images)
+  - **Caption redundancy/noise** in the training split  
+  - **Domain shift** from web/COCO images to personal phone photos  
+
+Even when the model understands high-level semantics, it may still:
+
+- Confuse visually similar scenes,
+- Miss identity-level details (same person, same store),
+- And show high rank variance when the query domain is far from pretraining.
+
+For **real-world deployment**, these results highlight the need for:
+
+- **Domain-aligned fine-tuning** on user or application-specific images,
+- Possibly hybrid systems combining CLIP-style retrieval with re-ranking or metadata filters.
 
 ---
 
